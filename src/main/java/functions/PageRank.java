@@ -25,7 +25,7 @@ public class PageRank {
 
         // Run PageRank on anomeGraph, and transform vertices to PairRDD
         JavaPairRDD<Long, Float> pagerankedVertex = anomeGraph
-                .ops().staticPageRank(10,0.15).vertices()
+                .ops().staticPageRank(3, 0.15).vertices()
                 .toJavaRDD()
                 .mapToPair(x-> new Tuple2<>(Long.parseLong(x._1().toString()),Float.parseFloat(x._2().toString())));
 
