@@ -1,5 +1,5 @@
 import functions.LongKeyToAnomeKey;
-import functions.MakeHapmapldToTuple;
+import functions.MakeEdgeRawToTuple;
 import functions.PageRank;
 import functions.WeightedPageRank;
 import org.apache.hadoop.mapred.TextOutputFormat;
@@ -21,7 +21,9 @@ public final class AnomeVariantGraph {
         SparkConf sparkConf = new SparkConf().setAppName("How do you turn this off?");
         JavaSparkContext ctx = new JavaSparkContext(sparkConf);
 
-        JavaRDD<String> hapmapldRaw = ctx.textFile("/vartotal/yattmp/anomeGraph/edge/hapmapld/*.snappy");
+        JavaRDD<String> hapmapldRaw = ctx.textFile("/vartotal/yattmp/anomeGraph/edge/hapmapld/part-01*.snappy");
+        JavaRDD<String> pathwayRaw = ctx.textFile("/vartotal/yattmp/anomeGraph/edge/pathway/*.snappy");
+        JavaRDD<String> ppiRaw = ctx.textFile("/vartotal/yattmp/anomeGraph/edge/ppi/*.snappy");
         JavaRDD<String> dbsnpRaw = ctx.textFile("/vartotal/yattmp/anomeGraph/vertex/dbsnp/*.snappy");
         JavaRDD<String> clinvarRaw = ctx.textFile("/vartotal/yattmp/anomeGraph/vertex/clinvar/*.snappy");
         JavaRDD<String> lovdRaw = ctx.textFile("/vartotal/yattmp/anomeGraph/vertex/lovd/*.snappy");
@@ -61,10 +63,20 @@ public final class AnomeVariantGraph {
 
         //      Transform hapmapldRaw to Tuple Format
         JavaPairRDD<Long, Tuple2<Long, Tuple2<Float, String>>> hapmapldConverted = hapmapldRaw
-                .mapToPair(new MakeHapmapldToTuple());
+                .mapToPair(new MakeEdgeRawToTuple());
+
+        //      Get pathway edges
+        JavaPairRDD<Long, Tuple2<Long, Tuple2<Float, String>>> pathwayContext = pathwayRaw
+                .mapToPair(new MakeEdgeRawToTuple());
+
+        //      Get ppi edges
+        JavaPairRDD<Long, Tuple2<Long, Tuple2<Float, String>>> ppiContext = ppiRaw
+                .mapToPair(new MakeEdgeRawToTuple());
 
         //      If user specified population code, filtered by that population, otherwise use all data to build edge.
         JavaRDD<Edge<Float>> anomeEdgeRDD = hapmapldConverted
+                .union(pathwayContext)
+                .union(ppiContext)
                 // .filter(x-> x._2()._2()._2().equals("YRI")) // using popCode as filter
                 .mapToPair(x -> new Tuple2<>(new Tuple2<>(x._1(), x._2()._1()), x._2()._2()._1()))
                 .reduceByKey(Math::max) // Get largest ld info as edge properties
@@ -75,33 +87,32 @@ public final class AnomeVariantGraph {
         // Join vertexRDD with dbsnp longID-KeyID RDD to get original keyID
         PageRank pageRank = new PageRank(anomeEdgeRDD);
         JavaPairRDD<String, Float> pageRankResult = pageRank.runPageRank();
-        JavaPairRDD<String, String> pageRankResultFinal = pageRankResult
+        JavaPairRDD<Float, String> pageRankResultFinal = pageRankResult
                 .leftOuterJoin(allPatho)
                 .mapToPair(x -> {
                     if (x._2()._2().isPresent()) {
-                        return new Tuple2<>(x._1(), x._2()._1().toString().concat(" -> ").concat(x._2()._2.get()));
+                        return new Tuple2<>(x._2()._1(), x._1().concat("\\t").concat(x._2()._2.get()));
                     } else {
-                        return new Tuple2<>(x._1(), x._2()._1().toString());
+                        return new Tuple2<>(x._2()._1(), x._1());
                     }
-                });
+                }).sortByKey();
 
-        pageRankResultFinal.saveAsHadoopFile("/vartotal/yattmp/anomeGraph/pagerankOutput/", String.class, String.class, TextOutputFormat.class);
+        pageRankResultFinal.saveAsHadoopFile("/vartotal/yattmp/anomeGraph/pagerankOutput/", Float.class, String.class, TextOutputFormat.class);
 
         /** The following codes are for testing Pagerank algo on existing dataset */
         WeightedPageRank weightedPageRank = new WeightedPageRank(anomeEdgeRDD,anomeVertexRDD);
         JavaPairRDD<String, Float> weightedPageRankResult = weightedPageRank.runWeightedPageRank();
-        JavaPairRDD<String, String> weightedPageRankResultFinal = weightedPageRankResult
+        JavaPairRDD<Float, String> weightedPageRankResultFinal = weightedPageRankResult
                 .leftOuterJoin(allPatho)
                 .mapToPair(x -> {
                     if (x._2()._2().isPresent()) {
-                        return new Tuple2<>(x._1(), x._2()._1().toString().concat(" -> ").concat(x._2()._2.get()));
+                        return new Tuple2<>(x._2()._1(), x._1().concat("\\t").concat(x._2()._2.get()));
                     } else {
-                        return new Tuple2<>(x._1(), x._2()._1().toString());
+                        return new Tuple2<>(x._2()._1(), x._1());
                     }
-                });
+                }).sortByKey();
 
-
-        weightedPageRankResultFinal.saveAsHadoopFile("/vartotal/yattmp/anomeGraph/WeightedPagerankOutput/", String.class, String.class, TextOutputFormat.class);
+        weightedPageRankResultFinal.saveAsHadoopFile("/vartotal/yattmp/anomeGraph/WeightedPagerankOutput/", Float.class, String.class, TextOutputFormat.class);
 
         ctx.stop();
     }

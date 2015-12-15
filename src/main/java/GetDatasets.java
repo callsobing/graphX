@@ -21,7 +21,7 @@ import java.util.List;
 
 public final class GetDatasets implements Serializable {
     public static void main(String[] args) throws Exception {
-        SparkConf sparkConf = new SparkConf().setAppName("YoyoTV yong yuan pou gi");
+        SparkConf sparkConf = new SparkConf().setAppName("Aegis");
         JavaSparkContext ctx = new JavaSparkContext(sparkConf);
 
 //        JavaRDD<String> hapmapldRaw = ctx.textFile("/vartotal/db/2015summer/hybrid/0/hapmapld/*.snappy");
